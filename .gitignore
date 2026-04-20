@@ -79,3 +79,5 @@ temp/
 tmp/
 .python-version
 .venv/
+outputs/000001_prediction.png
+outputs/

@@ -14,6 +14,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolb
 import matplotlib.dates as mdates
 import logging
 from logging.handlers import RotatingFileHandler
+import mplfinance as mpf
 
 warnings.filterwarnings('ignore')
 
@@ -596,7 +597,7 @@ class StockPredictorApp:
         self.root.after(0, lambda: self.result_text.see(tk.END))
 
     def display_chart(self, historical_df, pred_df, future_dates, stock_code, stock_name):
-        """在独立窗口中显示交互式图表"""
+        """在独立窗口中显示K线图表"""
         try:
             # 保存预测数据以便重新显示
             self.last_prediction_data = {
@@ -616,8 +617,8 @@ class StockPredictorApp:
             
             # 创建新窗口
             self.chart_window = tk.Toplevel(self.root)
-            self.chart_window.title(f"{stock_name}({stock_code}) - 预测图表")
-            self.chart_window.geometry("1200x800")
+            self.chart_window.title(f"{stock_name}({stock_code}) - K线预测图表")
+            self.chart_window.geometry("1400x900")
             self.chart_window.configure(bg='#f0f0f0')
             
             # 设置窗口图标（可选）
@@ -630,48 +631,68 @@ class StockPredictorApp:
             chart_frame = tk.Frame(self.chart_window, bg='white')
             chart_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
             
-            # 创建新图表
-            fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10), dpi=100)
-            fig.suptitle(f'{stock_name}({stock_code}) - 股票价格预测', fontsize=16, fontweight='bold')
-
-            # 设置中文字体
-            plt.rcParams['font.sans-serif'] = ['SimHei']
-            plt.rcParams['axes.unicode_minus'] = False
-
-            # 价格图
-            ax1.plot(historical_df['timestamps'], historical_df['close'],
-                     color='#1f77b4', linewidth=2.5, label='历史价格')
-            ax1.plot(future_dates, pred_df['close'],
-                     color='#ff7f0e', linewidth=2.5, linestyle='--', label='预测价格')
-
+            # 准备K线数据
+            hist_data = historical_df[['timestamps', 'open', 'high', 'low', 'close', 'volume']].copy()
+            hist_data.index = pd.DatetimeIndex(hist_data['timestamps'])
+            
+            pred_data = pd.DataFrame({
+                'timestamps': future_dates,
+                'open': pred_df['open'].values,
+                'high': pred_df['high'].values,
+                'low': pred_df['low'].values,
+                'close': pred_df['close'].values,
+                'volume': pred_df['volume'].values
+            })
+            pred_data.index = pd.DatetimeIndex(pred_data['timestamps'])
+            
+            # 计算当前价格和预测价格变化
             current_price = historical_df['close'].iloc[-1]
             final_price = pred_df['close'].iloc[-1]
             change_pct = ((final_price - current_price) / current_price) * 100
-
-            ax1.set_ylabel('收盘价 (元)', fontsize=12, fontweight='bold')
-            ax1.legend(loc='best', fontsize=10)
-            ax1.grid(True, alpha=0.3)
-            ax1.set_title(f'当前价: {current_price:.2f}元 | 预测价: {final_price:.2f}元 ({change_pct:+.2f}%)',
-                          fontweight='bold', fontsize=13, color='#2c3e50')
-
-            # 成交量图
-            ax2.bar(historical_df['timestamps'], historical_df['volume'],
-                    alpha=0.6, color='#1f77b4', label='历史成交量')
-            ax2.bar(future_dates, pred_df['volume'],
-                    alpha=0.6, color='#ff7f0e', label='预测成交量')
-
-            ax2.set_ylabel('成交量', fontsize=12, fontweight='bold')
-            ax2.set_xlabel('日期', fontsize=12, fontweight='bold')
-            ax2.legend(loc='best', fontsize=10)
-            ax2.grid(True, alpha=0.3)
-            ax2.set_title('成交量预测', fontweight='bold', fontsize=13, color='#2c3e50')
-
-            # 格式化 x 轴日期
-            for ax in [ax1, ax2]:
-                ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
-                ax.xaxis.set_major_locator(mdates.WeekdayLocator(byweekday=mdates.MO, interval=2))
-                plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, fontsize=8)
-
+            
+            # 设置中文字体
+            plt.rcParams['font.sans-serif'] = ['SimHei']
+            plt.rcParams['axes.unicode_minus'] = False
+            
+            # 使用mplfinance绘制K线图
+            mc = mpf.make_marketcolors(up='red', down='green', edge='inherit', wick='inherit', volume='inherit')
+            s = mpf.make_mpf_style(marketcolors=mc, base_mpl_style='seaborn-v0_8-whitegrid')
+            
+            title_text = f'{stock_name}({stock_code}) - K线预测分析\n当前价: {current_price:.2f}元 | 预测价: {final_price:.2f}元 ({change_pct:+.2f}%)'
+            
+            # 绘制历史K线图（包含成交量）
+            fig, axes = mpf.plot(
+                hist_data,
+                type='candle',
+                style=s,
+                title=title_text,
+                ylabel='价格 (元)',
+                ylabel_lower='成交量',
+                volume=True,
+                figsize=(16, 10),
+                returnfig=True,
+                show_nontrading=False
+            )
+            
+            # 在图上添加预测线
+            if len(pred_data) > 0 and len(axes) >= 2:
+                ax_price = axes[0]  # 价格轴
+                ax_volume = axes[2] if len(axes) > 2 else axes[1]  # 成交量轴
+                
+                # 绘制预测收盘价线
+                pred_dates = pred_data.index
+                pred_closes = pred_data['close'].values
+                ax_price.plot(pred_dates, pred_closes, color='orange', linewidth=2.5, 
+                             linestyle='--', label='预测收盘价', alpha=0.8, marker='o', markersize=4)
+                
+                # 绘制预测成交量
+                pred_volumes = pred_data['volume'].values
+                ax_volume.bar(pred_dates, pred_volumes, color='orange', alpha=0.5, width=0.8, label='预测成交量')
+                
+                # 添加图例
+                ax_price.legend(loc='best', fontsize=10)
+                ax_volume.legend(loc='best', fontsize=10)
+            
             plt.tight_layout()
 
             # 嵌入到 Tkinter 独立窗口
@@ -686,14 +707,14 @@ class StockPredictorApp:
             # 放置画布
             self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-            logger.info("✅ 交互式图表窗口已打开")
-            print("✅ 交互式图表窗口已打开")
+            logger.info("✅ K线图表窗口已打开")
+            print("✅ K线图表窗口已打开")
 
         except Exception as e:
-            error_msg = f"❌ 显示图表失败: {e}"
+            error_msg = f"❌ 显示K线图失败: {e}"
             logger.error(error_msg, exc_info=True)
             print(error_msg)
-            messagebox.showerror("错误", f"无法显示图表：{e}")
+            messagebox.showerror("错误", f"无法显示K线图：{e}")
 
 
 def _fetch_stock_name(stock_code, max_retries=3):
@@ -1224,39 +1245,130 @@ def generate_trading_dates(last_date, pred_len):
 
 
 def plot_prediction(historical_df, pred_df, future_dates, stock_code, stock_name, output_dir):
-    """绘制预测图表"""
+    """绘制K线预测图表"""
     os.makedirs(output_dir, exist_ok=True)
 
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10))
-    fig.suptitle(f'{stock_name}({stock_code}) - 股票价格预测', fontsize=16, fontweight='bold')
-
-    # 价格图
-    ax1.plot(historical_df['timestamps'], historical_df['close'],
-             color='#1f77b4', linewidth=2, label='历史价格')
-    ax1.plot(future_dates, pred_df['close'],
-             color='#ff7f0e', linewidth=2, linestyle='--', label='预测价格')
-
-    current_price = historical_df['close'].iloc[-1]
-    final_price = pred_df['close'].iloc[-1]
-    change_pct = ((final_price - current_price) / current_price) * 100
-
-    ax1.set_ylabel('收盘价 (元)', fontsize=12)
-    ax1.legend(loc='best', fontsize=10)
-    ax1.grid(True, alpha=0.3)
-    ax1.set_title(f'价格走势预测 - 当前价: {current_price:.2f}元, 预测价: {final_price:.2f}元 ({change_pct:+.2f}%)',
-                  fontweight='bold')
-
-    # 成交量图
-    ax2.bar(historical_df['timestamps'], historical_df['volume'],
-            alpha=0.6, color='#1f77b4', label='历史成交量')
-    ax2.bar(future_dates, pred_df['volume'],
-            alpha=0.6, color='#ff7f0e', label='预测成交量')
-
-    ax2.set_ylabel('成交量', fontsize=12)
-    ax2.set_xlabel('日期', fontsize=12)
-    ax2.legend(loc='best', fontsize=10)
+    try:
+        # 准备K线数据
+        hist_data = historical_df[['timestamps', 'open', 'high', 'low', 'close', 'volume']].copy()
+        hist_data['timestamps'] = pd.to_datetime(hist_data['timestamps'])
+        hist_data.set_index('timestamps', inplace=True)
+        
+        # 计算价格变化
+        current_price = historical_df['close'].iloc[-1]
+        final_price = pred_df['close'].iloc[-1]
+        change_pct = ((final_price - current_price) / current_price) * 100
+        
+        # 设置中文字体
+        plt.rcParams['font.sans-serif'] = ['SimHei']
+        plt.rcParams['axes.unicode_minus'] = False
+        
+        # 使用mplfinance绘制K线图
+        mc = mpf.make_marketcolors(up='red', down='green', edge='inherit', wick='inherit', volume='inherit')
+        s = mpf.make_mpf_style(marketcolors=mc, base_mpl_style='seaborn-v0_8-whitegrid')
+        
+        title_text = f'{stock_name}({stock_code}) - K线预测分析\n当前价: {current_price:.2f}元 | 预测价: {final_price:.2f}元 ({change_pct:+.2f}%)'
+        
+        # 准备预测数据的addplot
+        add_plots = []
+        
+        if len(pred_df) > 0:
+            # 创建与历史数据连续的日期索引
+            hist_len = len(hist_data)
+            pred_len = len(pred_df)
+            
+            # 为预测数据创建连续的数值索引（接在历史数据后面）
+            pred_indices = list(range(hist_len, hist_len + pred_len))
+            
+            # 创建预测收盘价的addplot
+            from mplfinance import make_addplot
+            add_pred_close = make_addplot(
+                pd.Series(pred_df['close'].values, index=pred_indices),
+                type='line',
+                color='orange',
+                linewidth=2.5,
+                linestyle='--',
+                markersize=4,
+                marker='o',
+                ylabel='价格 (元)'
+            )
+            add_plots.append(add_pred_close)
+            
+            # 创建预测成交量的addplot
+            add_pred_volume = make_addplot(
+                pd.Series(pred_df['volume'].values, index=pred_indices),
+                type='bar',
+                color='orange',
+                alpha=0.5,
+                width=0.8,
+                panel=1,  # 在成交量面板
+                ylabel='成交量'
+            )
+            add_plots.append(add_pred_volume)
+        
+        # 绘制K线图（包含成交量和预测数据）
+        fig, axes = mpf.plot(
+            hist_data,
+            type='candle',
+            style=s,
+            title=title_text,
+            ylabel='价格 (元)',
+            ylabel_lower='成交量',
+            volume=True,
+            figsize=(16, 10),
+            returnfig=True,
+            show_nontrading=False,
+            addplot=add_plots if add_plots else None
+        )
+        
+        # 保存图表
+        chart_path = os.path.join(output_dir, f'{stock_code}_prediction.png')
+        plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+        
+        logger.info(f"📊 K线预测图表已保存: {chart_path}")
+        print(f"📊 K线预测图表已保存: {chart_path}")
+        return chart_path
+        
+    except Exception as e:
+        logger.error(f"❌ 绘制K线图失败: {e}", exc_info=True)
+        print(f"❌ 绘制K线图失败: {e}")
+        # 回退到简单折线图
+        return _plot_simple_chart(historical_df, pred_df, future_dates, stock_code, stock_name, output_dir)
+    # 2. 成交量图
+    ax2 = axes[1]
+    colors = ['red' if row['close'] >= row['open'] else 'green' 
+             for _, row in combined_df.iterrows()]
+    
+    ax2.bar(combined_df.index, combined_df['volume'], color=colors, alpha=0.6, width=0.8)
+    ax2.set_ylabel('成交量', fontsize=12, fontweight='bold')
     ax2.grid(True, alpha=0.3)
-    ax2.set_title('成交量预测', fontweight='bold')
+    ax2.set_title('成交量分布', fontweight='bold', fontsize=13)
+    
+    if len(pred_df_plot) > 0:
+        pred_start = pred_df_plot.index[0]
+        ax2.axvline(x=pred_start, color='orange', linestyle='--', linewidth=2, alpha=0.5, label='预测开始')
+        ax2.legend(loc='best', fontsize=10)
+
+    # 3. 价格趋势对比图
+    ax3 = axes[2]
+    ax3.plot(hist_df_plot.index, hist_df_plot['close'], 
+            color='#1f77b4', linewidth=2.5, label='历史收盘价')
+    if len(pred_df_plot) > 0:
+        ax3.plot(pred_df_plot.index, pred_df_plot['close'],
+                color='#ff7f0e', linewidth=2.5, linestyle='--', label='预测收盘价')
+    
+    ax3.set_ylabel('收盘价 (元)', fontsize=12, fontweight='bold')
+    ax3.set_xlabel('日期', fontsize=12, fontweight='bold')
+    ax3.legend(loc='best', fontsize=11)
+    ax3.grid(True, alpha=0.3)
+    ax3.set_title('价格趋势对比', fontweight='bold', fontsize=13)
+
+    # 格式化 x 轴日期
+    for ax in axes:
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+        ax.xaxis.set_major_locator(mdates.WeekdayLocator(byweekday=mdates.MO, interval=2))
+        plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, fontsize=9)
 
     plt.tight_layout()
 
@@ -1264,9 +1376,57 @@ def plot_prediction(historical_df, pred_df, future_dates, stock_code, stock_name
     plt.savefig(chart_path, dpi=300, bbox_inches='tight')
     plt.close()
 
-    logger.info(f"📊 预测图表已保存: {chart_path}")
-    print(f"📊 预测图表已保存: {chart_path}")
+    logger.info(f"📊 K线预测图表已保存: {chart_path}")
+    print(f"📊 K线预测图表已保存: {chart_path}")
     return chart_path
+
+
+def _plot_simple_chart(historical_df, pred_df, future_dates, stock_code, stock_name, output_dir):
+    """简单的折线图（备用方案）"""
+    try:
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 10))
+        fig.suptitle(f'{stock_name}({stock_code}) - 股票价格预测', fontsize=16, fontweight='bold')
+
+        # 价格图
+        ax1.plot(historical_df['timestamps'], historical_df['close'],
+                 color='#1f77b4', linewidth=2, label='历史价格')
+        ax1.plot(future_dates, pred_df['close'],
+                 color='#ff7f0e', linewidth=2, linestyle='--', label='预测价格')
+
+        current_price = historical_df['close'].iloc[-1]
+        final_price = pred_df['close'].iloc[-1]
+        change_pct = ((final_price - current_price) / current_price) * 100
+
+        ax1.set_ylabel('收盘价 (元)', fontsize=12)
+        ax1.legend(loc='best', fontsize=10)
+        ax1.grid(True, alpha=0.3)
+        ax1.set_title(f'价格走势预测 - 当前价: {current_price:.2f}元, 预测价: {final_price:.2f}元 ({change_pct:+.2f}%)',
+                      fontweight='bold')
+
+        # 成交量图
+        ax2.bar(historical_df['timestamps'], historical_df['volume'],
+                alpha=0.6, color='#1f77b4', label='历史成交量')
+        ax2.bar(future_dates, pred_df['volume'],
+                alpha=0.6, color='#ff7f0e', label='预测成交量')
+
+        ax2.set_ylabel('成交量', fontsize=12)
+        ax2.set_xlabel('日期', fontsize=12)
+        ax2.legend(loc='best', fontsize=10)
+        ax2.grid(True, alpha=0.3)
+        ax2.set_title('成交量预测', fontweight='bold')
+
+        plt.tight_layout()
+
+        chart_path = os.path.join(output_dir, f'{stock_code}_prediction.png')
+        plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+        plt.close()
+
+        logger.info(f"📊 预测图表已保存（简单模式）: {chart_path}")
+        print(f"📊 预测图表已保存（简单模式）: {chart_path}")
+        return chart_path
+    except Exception as e:
+        logger.error(f"❌ 简单图表也失败: {e}")
+        raise
 
 
 def run_stock_prediction(stock_code, stock_name, pred_days, output_dir, history_years=1, use_cache=True,
@@ -1307,13 +1467,46 @@ def run_stock_prediction(stock_code, stock_name, pred_days, output_dir, history_
         # 3. 加载模型
         update_progress("步骤3: 加载Kronos模型...")
         try:
-            tokenizer = KronosTokenizer.from_pretrained("NeoQuasar/Kronos-Tokenizer-base")
-            model = Kronos.from_pretrained("NeoQuasar/Kronos-base")
+            import os
+            from pathlib import Path
+            
+            # 获取用户主目录和HF缓存目录
+            home_dir = Path.home()
+            hf_cache_dir = home_dir / ".cache" / "huggingface" / "hub"
+            
+            # 定义模型ID
+            tokenizer_repo_id = "NeoQuasar/Kronos-Tokenizer-base"
+            model_repo_id = "NeoQuasar/Kronos-base"
+            
+            # 将repo_id转换为缓存路径格式 (例如: NeoQuasar/Kronos-Tokenizer-base -> models--NeoQuasar--Kronos-Tokenizer-base)
+            def get_hf_cache_path(repo_id):
+                folder_name = repo_id.replace("/", "--")
+                return hf_cache_dir / f"models--{folder_name}"
+            
+            tokenizer_cache_path = get_hf_cache_path(tokenizer_repo_id)
+            model_cache_path = get_hf_cache_path(model_repo_id)
+            
+            # 检查HuggingFace缓存中是否已有模型
+            if tokenizer_cache_path.exists():
+                update_progress(f"✅ 使用缓存的Tokenizer: {tokenizer_cache_path}")
+                tokenizer = KronosTokenizer.from_pretrained(tokenizer_repo_id, local_files_only=True)
+            else:
+                update_progress("🌐 首次下载Tokenizer（将缓存到本地）...")
+                tokenizer = KronosTokenizer.from_pretrained(tokenizer_repo_id)
+            
+            if model_cache_path.exists():
+                update_progress(f"✅ 使用缓存的Model: {model_cache_path}")
+                model = Kronos.from_pretrained(model_repo_id, local_files_only=True)
+            else:
+                update_progress("🌐 首次下载Model（将缓存到本地）...")
+                model = Kronos.from_pretrained(model_repo_id)
+            
             predictor = KronosPredictor(model, tokenizer, device=None, max_context=512)
             update_progress("✅ 模型加载完成")
         except Exception as e:
             error_msg = f"❌ 模型加载失败: {e}"
             update_result(error_msg)
+            logger.error(error_msg, exc_info=True)
             return False, error_msg
 
         # 4. 计算参数
@@ -1323,7 +1516,7 @@ def run_stock_prediction(stock_code, stock_name, pred_days, output_dir, history_
         pred_len = min(pred_days, len(df) - lookback)
 
         if pred_len <= 0:
-            update_result("❌ 数据量不足")
+            update_result("❌ 数据量不足")  
             return False, "数据量不足"
 
         update_progress(f"✅ 回看期: {lookback}, 预测期: {pred_len}")
