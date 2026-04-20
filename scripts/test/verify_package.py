@@ -11,7 +11,7 @@ def verify_package():
     print("Kronos 打包结果验证")
     print("=" * 60)
     
-    base_dir = Path("dist/KronosStockPredictor")
+    base_dir = Path("../../dist/KronosStockPredictor")
     
     if not base_dir.exists():
         print("❌ 打包目录不存在")
@@ -79,12 +79,12 @@ def verify_package():
     
     if all_ok:
         print("\n" + "=" * 60)
-        print("✅ 验证通过！打包完整且正确")
+        print("✅ 验证通过!打包完整且正确")
         print("=" * 60)
         return True
     else:
         print("\n" + "=" * 60)
-        print("⚠️ 验证发现问题，请检查上述警告")
+        print("⚠️ 验证发现问题,请检查上述警告")
         print("=" * 60)
         return False
 

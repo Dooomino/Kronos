@@ -1,5 +1,9 @@
 @echo off
 chcp 65001 >nul
+
+REM 切换到项目根目录
+cd /d %~dp0\..\..
+
 echo ========================================
 echo Kronos离线部署包构建工具
 echo ========================================
@@ -21,17 +25,17 @@ REM 检查或下载模型文件
 echo [步骤2/3] 检查模型文件...
 if exist models\NeoQuasar\Kronos-Tokenizer-base\config.json (
     if exist models\NeoQuasar\Kronos-base\config.json (
-        echo ✅ 模型文件已存在，跳过下载
+        echo ✅ 模型文件已存在,跳过下载
         echo    Tokenizer: models\NeoQuasar\Kronos-Tokenizer-base
         echo    Model: models\NeoQuasar\Kronos-base
     ) else (
-        echo ⚠️ 模型文件不完整，开始下载...
+        echo ⚠️ 模型文件不完整,开始下载...
         call :download_models
     )
 ) else (
-    echo ⚠️ 未找到模型文件，开始下载...
-    echo 注意: 模型文件较大(约1-2GB)，下载可能需要较长时间
-    echo 提示: 如果网络不稳定，可以手动从HF缓存复制
+    echo ⚠️ 未找到模型文件,开始下载...
+    echo 注意: 模型文件较大(约1-2GB),下载可能需要较长时间
+    echo 提示: 如果网络不稳定,可以手动从HF缓存复制
     echo.
     call :download_models
 )
@@ -39,12 +43,12 @@ echo.
 
 REM 执行打包
 echo [步骤3/3] 开始打包...
-echo 这可能需要几分钟时间，请耐心等待...
+echo 这可能需要几分钟时间,请耐心等待...
 echo.
-.venv\Scripts\python.exe build_package.py
+.venv\Scripts\python.exe scripts\build\build_package.py
 if errorlevel 1 (
     echo.
-    echo ❌ 打包失败，请检查上面的错误信息
+    echo ❌ 打包失败,请检查上面的错误信息
     pause
     exit /b 1
 )
@@ -62,7 +66,7 @@ pause
 exit /b 0
 
 :download_models
-    .venv\Scripts\python.exe download_models.py
+    .venv\Scripts\python.exe scripts\build\download_models.py
     if errorlevel 1 (
         echo.
         echo ❌ 模型下载失败

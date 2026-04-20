@@ -22,8 +22,8 @@ def setup_offline_mode():
         # PyInstaller打包环境
         base_path = sys._MEIPASS
     else:
-        # 开发环境
-        base_path = os.path.dirname(os.path.abspath(__file__))
+        # 开发环境 - 指向项目根目录
+        base_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..')
     
     # 设置Torch缓存目录到本地
     torch_cache = os.path.join(base_path, 'cache', 'torch')

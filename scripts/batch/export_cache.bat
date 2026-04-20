@@ -1,5 +1,9 @@
 @echo off
 chcp 65001 >nul
+
+REM 切换到项目根目录
+cd /d %~dp0\..\..
+
 echo ========================================
 echo Kronos 缓存数据导出工具
 echo ========================================
@@ -55,7 +59,7 @@ echo 📦 导出位置: %CD%\%EXPORT_DIR%
 echo.
 echo 💡 使用方法:
 echo    1. 将整个 %EXPORT_DIR% 文件夹复制到U盘或移动硬盘
-echo    2. 在离线机器上，将文件夹内容复制到 KronosStockPredictor\cache\ 目录
+echo    2. 在离线机器上,将文件夹内容复制到 KronosStockPredictor\cache\ 目录
 echo    3. 运行程序时将自动使用这些缓存数据
 echo.
 
